@@ -583,13 +583,13 @@ header {
 .logo img {
     width: auto;
     height: 95px;
-    filter: brightness(15%);
+    filter: brightness(75%);
     transform: rotate(-9deg);
 }
 
 .logo img:hover{
-    transition: 0.4s ease-in-out;
-    filter: brightness(65%);
+    transition: 0.1s;
+    filter: brightness(95%);
 }
 
 .input {

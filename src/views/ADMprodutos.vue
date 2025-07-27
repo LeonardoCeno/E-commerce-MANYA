@@ -41,7 +41,7 @@
     </div>
     <div class="produtos" >
     <div class="produtos-header">
-      <h3>Produtos</h3>
+      <h3>{{ modoDesconto ? 'Descontos' : 'Produtos' }}</h3>
       <div class="busca-container">
         <div class="input-busca">
           <input 
@@ -74,7 +74,13 @@
             <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
           </select>
         </div>
-        <button class="novo-produto-btn" @click="abrirCriacao">Novo produto</button>
+        <button v-if="!modoDesconto" class="novo-produto-btn" @click="abrirCriacao">Novo produto</button>
+        <button v-if="modoDesconto" class="novo-produto-btn" :class="{ 'cancelar-btn': selecionandoProduto }" @click="selecionandoProduto ? cancelarSelecaoProduto() : abrirCriacaoDesconto()">
+          {{ selecionandoProduto ? 'Cancelar' : 'Novo desconto' }}
+        </button>
+        <button class="alternar-modo-btn" @click="alternarModo">
+          {{ modoDesconto ? 'Produtos' : 'Descontos' }}
+        </button>
       </div>
     </div>
     <div v-if="carregandoProdutos">Carregando produtos...</div>
@@ -85,13 +91,16 @@
         <div v-else>Nenhum produto cadastrado ainda.</div>
       </div>
       <ul v-else class="lista">
-        <li v-for="produto in produtosFiltrados" :key="produto.id" class="produto">
+        <li v-for="produto in produtosFiltrados" :key="produto.id" class="produto" :class="{ 'produto-selecionado': selecionandoProduto && !temDescontoAtivo(produto), 'produto-com-desconto': selecionandoProduto && temDescontoAtivo(produto) }" @click="selecionandoProduto && !temDescontoAtivo(produto) ? selecionarProduto(produto) : null">
           <div class="nome-preco-imagem">
             <img v-if="produto.image_path" :src="produto.image_path" alt="Imagem do produto" class="produto-imagem" />
             <h4>{{ produto.name }}</h4>
             <p>R$ {{ produto.price }}</p>
+            <div v-if="selecionandoProduto && temDescontoAtivo(produto)" class="desconto-badge">
+              <span>DESCONTO ATIVO</span>
+            </div>
           </div>
-          <div class="BTli">
+          <div class="BTli" @click.stop>
             <button @click="editarProduto(produto)">Editar</button>
             <button class="excluir-btn" @click="abrirModalExclusao(produto.id)">Excluir</button>
           </div>
@@ -113,6 +122,44 @@
           </div>
       </div>
   </div>
+
+
+
+  <!-- Modal de Formulário de Desconto -->
+  <div v-if="mostraFormularioDesconto" class="modal-overlay">
+      <div class="modal-desconto">
+          <h3>Criar Desconto</h3>
+          <div v-if="produtoSelecionado" class="produto-selecionado-info">
+              <h4>Produto Selecionado:</h4>
+              <p><strong>{{ produtoSelecionado.name }}</strong></p>
+              <p>Preço: R$ {{ produtoSelecionado.price }}</p>
+          </div>
+          <form @submit.prevent="criarDesconto">
+              <div>
+                  <label>Descrição do Desconto:</label>
+                  <input v-model="descricaoDesconto" required />
+              </div>
+              <div>
+                  <label>Percentual de Desconto (%):</label>
+                  <input type="number" v-model.number="percentualDesconto" min="0" max="100" step="0.01" required />
+              </div>
+              <div class="linha-dupla">
+                  <div class="campo-metade">
+                      <label>Data de Início:</label>
+                      <input type="datetime-local" v-model="dataInicioDesconto" required />
+                  </div>
+                  <div class="campo-metade">
+                      <label>Data de Fim:</label>
+                      <input type="datetime-local" v-model="dataFimDesconto" required />
+                  </div>
+              </div>
+              <div class="modal-botoes">
+                  <button type="submit" class="btn-confirmar">Criar Desconto</button>
+                  <button type="button" @click="fecharFormularioDesconto" class="btn-cancelar">Cancelar</button>
+              </div>
+          </form>
+      </div>
+  </div>
 </template>
 
 <script setup>
@@ -131,6 +178,18 @@ const produtoParaExcluir = ref(null)
 // Busca
 const termoBusca = ref('')
 let timeoutBusca = null
+
+// Desconto
+const mostraFormularioDesconto = ref(false)
+const produtoSelecionado = ref(null)
+const selecionandoProduto = ref(false)
+const descricaoDesconto = ref('')
+const percentualDesconto = ref(0)
+const dataInicioDesconto = ref('')
+const dataFimDesconto = ref('')
+
+// Alternância de headers
+const modoDesconto = ref(false)
 
 // Edição
 const editando = ref(false)
@@ -213,6 +272,90 @@ function onFocusBusca() {
 
 function onBlurBusca() {
   // Pode adicionar lógica adicional se necessário
+}
+
+// Função para verificar se um produto tem desconto ativo
+function temDescontoAtivo(produto) {
+  if (!produto.discounts || produto.discounts.length === 0) {
+    return false
+  }
+  
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0) // Normalizar para comparar apenas a data
+  
+  return produto.discounts.some(desconto => {
+    const inicio = new Date(desconto.start_date)
+    const fim = new Date(desconto.end_date)
+    inicio.setHours(0, 0, 0, 0)
+    fim.setHours(23, 59, 59, 999) // Incluir o dia inteiro do fim
+    
+    return hoje >= inicio && hoje <= fim
+  })
+}
+
+// Funções de alternância de modo
+function alternarModo() {
+  modoDesconto.value = !modoDesconto.value
+  // Limpar estados quando alternar
+  selecionandoProduto.value = false
+  produtoSelecionado.value = null
+  mostraFormularioDesconto.value = false
+  termoBusca.value = ''
+  categoriaSelecionada.value = ''
+  estoqueSelecionado.value = ''
+}
+
+// Funções de desconto
+function abrirCriacaoDesconto() {
+  selecionandoProduto.value = true
+}
+
+function selecionarProduto(produto) {
+  // Verificar se o produto já tem desconto ativo
+  if (temDescontoAtivo(produto)) {
+    toast.error('Este produto já possui um desconto ativo!')
+    return
+  }
+  
+  produtoSelecionado.value = produto
+  selecionandoProduto.value = false
+  mostraFormularioDesconto.value = true
+}
+
+function cancelarSelecaoProduto() {
+  selecionandoProduto.value = false
+  produtoSelecionado.value = null
+}
+
+function fecharFormularioDesconto() {
+  mostraFormularioDesconto.value = false
+  produtoSelecionado.value = null
+  descricaoDesconto.value = ''
+  percentualDesconto.value = 0
+  dataInicioDesconto.value = ''
+  dataFimDesconto.value = ''
+}
+
+async function criarDesconto() {
+  try {
+    const descontoData = {
+      description: descricaoDesconto.value,
+      discount_percentage: percentualDesconto.value,
+      start_date: dataInicioDesconto.value,
+      end_date: dataFimDesconto.value,
+      product_id: produtoSelecionado.value.id
+    }
+    
+    await api.post('/discounts/', descontoData)
+    toast.success('Desconto criado com sucesso!')
+    fecharFormularioDesconto()
+    
+    // Recarregar produtos para mostrar o desconto aplicado
+    await carregarProdutos()
+  } catch (e) {
+    toast.error('Erro ao criar desconto.')
+    console.error('Erro:', e)
+  }
 }
 
 watch(editando, (novo) => {
@@ -386,12 +529,33 @@ async function carregarProdutos() {
   erroProdutos.value = ''
   try {
     const { data } = await api.get('/products/user/228')
-    produtos.value = data.map(produto => ({
-      ...produto,
-      image_path: produto.image_path 
-        ? `http://35.196.79.227:8000${produto.image_path}` 
-        : '/placeholder-image.jpg'
+    
+    // Carregar descontos separadamente
+    const produtosComDescontos = await Promise.all(data.map(async (produto) => {
+      try {
+        const { data: descontos } = await api.get(`/discounts/`)
+        const descontosDoProduto = descontos.filter(desconto => desconto.product_id === produto.id)
+        return {
+          ...produto,
+          image_path: produto.image_path 
+            ? `http://35.196.79.227:8000${produto.image_path}` 
+            : '/placeholder-image.jpg',
+          discounts: descontosDoProduto || []
+        }
+      } catch (e) {
+        console.log(`Erro ao carregar descontos para produto ${produto.id}:`, e)
+        return {
+          ...produto,
+          image_path: produto.image_path 
+            ? `http://35.196.79.227:8000${produto.image_path}` 
+            : '/placeholder-image.jpg',
+          discounts: []
+        }
+      }
     }))
+    
+    produtos.value = produtosComDescontos
+    console.log('Produtos com descontos:', produtos.value)
   } catch (e) {
     erroProdutos.value = 'Erro ao carregar produtos.'
   } finally {
@@ -463,6 +627,48 @@ async function carregarProdutos() {
 
 .novo-produto-btn:hover {
   background-color: #45a049;
+}
+
+.cancelar-btn {
+  background-color: #6c757d !important;
+}
+
+.cancelar-btn:hover {
+  background-color: #5a6268 !important;
+}
+
+
+
+.alternar-modo-btn {
+  padding: 10px 20px;
+  font-size: 1.2rem;
+  background-color: #06080afa;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+@media (max-width: 768px) {
+  .alternar-modo-btn {
+    padding: 8px 16px;
+    font-size: 1rem;
+    margin-left: 5px;
+  }
+}
+
+@media (max-width: 480px) {
+  .alternar-modo-btn {
+    padding: 6px 12px;
+    font-size: 0.9rem;
+    margin-left: 3px;
+  }
+}
+
+.alternar-modo-btn:hover {
+  background-color: #0a0d0f;
 }
 
 .criacao-form-wrapper {
@@ -689,9 +895,9 @@ async function carregarProdutos() {
   background-color: #ffffff;
   border-radius: 15px;
   padding: 0 20px;
-  width: 100%;
+  width: 80%;
   max-width: 400px;
-  height: 50px;
+  height: 40px;
   border: 1px solid #6d6d6d;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   position: relative;
@@ -905,6 +1111,7 @@ li {
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
 }
 
 @media (max-width: 768px) {
@@ -963,6 +1170,7 @@ li {
   margin-top: 3vh;
   padding-left: 10px;
   padding-right: 10px;
+  transition: all 0.3s ease;
 }
 
 @media (max-width: 768px) {
@@ -1147,6 +1355,146 @@ li {
     .btn-confirmar,
     .btn-cancelar {
         padding: 12px 20px;
+    }
+}
+
+/* Estilos para seleção de produto */
+.produto-selecionado {
+  border: 2px solid #2196F3 !important;
+  background-color: #E3F2FD !important;
+  transform: scale(1.02);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.produto-selecionado:hover {
+  transform: scale(1.03);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+/* Estilos para produtos com desconto */
+.produto-com-desconto {
+  border: 2px solid #6c757d !important;
+  background-color: #f8f9fa !important;
+  opacity: 0.8;
+}
+
+.produto-com-desconto:hover {
+  opacity: 1;
+}
+
+.desconto-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: #6c757d;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  z-index: 10;
+}
+
+.desconto-badge span {
+  font-size: 0.6rem;
+  letter-spacing: 0.5px;
+}
+
+
+
+/* Modal de Desconto */
+.modal-desconto {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-desconto h3 {
+    margin: 0 0 20px 0;
+    color: #333;
+    font-size: 1.5rem;
+    text-align: center;
+}
+
+.produto-selecionado-info {
+    background: #E3F2FD;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border-left: 4px solid #2196F3;
+}
+
+.produto-selecionado-info h4 {
+    margin: 0 0 10px 0;
+    color: #1976D2;
+    font-size: 1.1rem;
+}
+
+.produto-selecionado-info p {
+    margin: 5px 0;
+    color: #333;
+}
+
+.modal-desconto form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.modal-desconto label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #333;
+}
+
+.modal-desconto input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1rem;
+}
+
+.modal-desconto .linha-dupla {
+    display: flex;
+    gap: 15px;
+}
+
+.modal-desconto .campo-metade {
+    flex: 1;
+}
+
+@media (max-width: 768px) {
+    .modal-desconto .linha-dupla {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .modal-desconto {
+        padding: 20px;
+        margin: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .modal-desconto {
+        padding: 15px;
+        margin: 5px;
+    }
+    
+    .modal-desconto h3 {
+        font-size: 1.3rem;
+    }
+    
+    .produto-selecionado-info {
+        padding: 10px;
     }
 }
 
