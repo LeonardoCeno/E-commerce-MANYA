@@ -40,8 +40,8 @@
       </div>
     </div>
     <div class="produtos" >
+    <h3 class="titulo-principal">{{ modoDesconto ? 'Descontos' : 'Produtos' }}</h3>
     <div class="produtos-header">
-      <h3>{{ modoDesconto ? 'Descontos' : 'Produtos' }}</h3>
       <div class="busca-container">
         <div class="input-busca">
           <input 
@@ -68,12 +68,22 @@
           </select>
         </div>
         <div class="filtro-categoria">
-          <label for="filtroCategoria" style="margin-right: 6px; font-size: 1rem;">Filtrar por categoria:</label>
+          <label for="filtroCategoria" style="margin-right: 6px; font-size: 1rem;">Categoria:</label>
           <select id="filtroCategoria" v-model="categoriaSelecionada">
             <option value="">Todas</option>
             <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
           </select>
         </div>
+        <div v-if="modoDesconto" class="filtro-desconto">
+          <label for="filtroDesconto" style="margin-right: 6px; font-size: 1rem;">Desconto:</label>
+          <select id="filtroDesconto" v-model="filtroDescontoSelecionado">
+            <option value="Todos">Todos</option>
+            <option value="Ativo">Ativo</option>
+            <option value="Expirado">Expirado</option>
+            <option value="Sem desconto">Sem desconto</option>
+          </select>
+        </div>
+
         <button v-if="!modoDesconto" class="novo-produto-btn" @click="abrirCriacao">Novo produto</button>
         <button v-if="modoDesconto" class="novo-produto-btn" :class="{ 'cancelar-btn': selecionandoProduto }" @click="selecionandoProduto ? cancelarSelecaoProduto() : abrirCriacaoDesconto()">
           {{ selecionandoProduto ? 'Cancelar' : 'Novo desconto' }}
@@ -91,18 +101,30 @@
         <div v-else>Nenhum produto cadastrado ainda.</div>
       </div>
       <ul v-else class="lista">
-        <li v-for="produto in produtosFiltrados" :key="produto.id" class="produto" :class="{ 'produto-selecionado': selecionandoProduto && !temDescontoAtivo(produto), 'produto-com-desconto': selecionandoProduto && temDescontoAtivo(produto) }" @click="selecionandoProduto && !temDescontoAtivo(produto) ? selecionarProduto(produto) : null">
+        <li v-for="produto in produtosFiltrados" :key="produto.id" class="produto" :class="{ 
+          'produto-selecionado': selecionandoProduto && !temDescontoAtivoProduto(produto), 
+          'produto-com-desconto': selecionandoProduto && temDescontoAtivoProduto(produto),
+          'produto-com-desconto-modo': modoDesconto && temDescontoAtivoProduto(produto),
+          'produto-com-desconto-expirado': modoDesconto && temDescontoExpiradoProduto(produto)
+        }" @click="selecionandoProduto && !temDescontoAtivoProduto(produto) ? selecionarProduto(produto) : null">
           <div class="nome-preco-imagem">
             <img v-if="produto.image_path" :src="produto.image_path" alt="Imagem do produto" class="produto-imagem" />
             <h4>{{ produto.name }}</h4>
             <p>R$ {{ produto.price }}</p>
-            <div v-if="selecionandoProduto && temDescontoAtivo(produto)" class="desconto-badge">
+            <div v-if="(selecionandoProduto || modoDesconto) && temDescontoAtivoProduto(produto)" class="desconto-barra ativo">
               <span>DESCONTO ATIVO</span>
             </div>
+            <div v-if="modoDesconto && temDescontoExpiradoProduto(produto)" class="desconto-barra expirado">
+              <span>DESCONTO EXPIRADO</span>
+            </div>
           </div>
-          <div class="BTli" @click.stop>
+          <div class="BTli" @click.stop v-if="!modoDesconto">
             <button @click="editarProduto(produto)">Editar</button>
             <button class="excluir-btn" @click="abrirModalExclusao(produto.id)">Excluir</button>
+          </div>
+          <div class="BTli" @click.stop v-if="modoDesconto && (temDescontoAtivoProduto(produto) || temDescontoExpiradoProduto(produto))">
+            <button class="detalhes-btn" @click="visualizarDesconto(produto)">Detalhes</button>
+            <button class="excluir-desconto-btn" @click="excluirDescontoDireto(produto)">Excluir</button>
           </div>
           <span style="font-size:12px;color:#555;">Estoque: {{ produto.stock }}</span>
         </li>
@@ -160,6 +182,95 @@
           </form>
       </div>
   </div>
+
+  <!-- Modal para Visualizar Desconto -->
+  <div v-if="mostraModalVisualizarDesconto" class="modal-overlay">
+      <div class="modal-desconto">
+          <h3>Informações do Desconto</h3>
+          <div class="produto-selecionado-info">
+              <h4>Produto: {{ produtoVisualizandoDesconto.name }}</h4>
+              <p><strong>Preço:</strong> R$ {{ produtoVisualizandoDesconto.price }}</p>
+          </div>
+          <div v-if="descontoVisualizando" class="desconto-detalhes">
+              <div class="desconto-info-completa">
+                  <h4>Detalhes do Desconto:</h4>
+                  <div class="info-item">
+                      <strong>Descrição:</strong>
+                      <p>{{ descontoVisualizando.description }}</p>
+                  </div>
+                  <div class="info-item">
+                      <strong>Percentual de Desconto:</strong>
+                      <p>{{ descontoVisualizando.discount_percentage }}%</p>
+                  </div>
+                  <div class="info-item">
+                      <strong>Data de Início:</strong>
+                      <p>{{ new Date(descontoVisualizando.start_date).toLocaleDateString('pt-BR', { 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                      }) }}</p>
+                  </div>
+                  <div class="info-item">
+                      <strong>Data de Fim:</strong>
+                      <p>{{ new Date(descontoVisualizando.end_date).toLocaleDateString('pt-BR', { 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                      }) }}</p>
+                  </div>
+                  <div class="info-item">
+                      <strong>Status:</strong>
+                      <p><span :class="getStatusClass(descontoVisualizando)">{{ getStatusText(descontoVisualizando) }}</span></p>
+                  </div>
+              </div>
+          </div>
+          <div class="modal-botoes">
+              <button type="button" @click="abrirModalEditarDesconto" class="btn-editar">Editar</button>
+              <button type="button" @click="fecharModalVisualizarDesconto" class="btn-cancelar">Fechar</button>
+          </div>
+      </div>
+  </div>
+
+  <!-- Modal para Editar Desconto -->
+  <div v-if="mostraModalEditarDesconto" class="modal-overlay">
+      <div class="modal-desconto">
+          <h3>Editar Desconto</h3>
+          <div v-if="produtoVisualizandoDesconto" class="produto-selecionado-info">
+              <h4>Produto: {{ produtoVisualizandoDesconto.name }}</h4>
+              <p><strong>Preço:</strong> R$ {{ produtoVisualizandoDesconto.price }}</p>
+          </div>
+          <form @submit.prevent="salvarEdicaoDesconto">
+              <div>
+                  <label>Descrição do Desconto:</label>
+                  <input v-model="descricaoDescontoEditando" required />
+              </div>
+              <div>
+                  <label>Percentual de Desconto (%):</label>
+                  <input type="number" v-model.number="percentualDescontoEditando" min="0" max="100" step="0.01" required />
+              </div>
+              <div class="linha-dupla">
+                  <div class="campo-metade">
+                      <label>Data de Início:</label>
+                      <input type="datetime-local" v-model="dataInicioDescontoEditando" required />
+                  </div>
+                  <div class="campo-metade">
+                      <label>Data de Fim:</label>
+                      <input type="datetime-local" v-model="dataFimDescontoEditando" required />
+                  </div>
+              </div>
+              <div class="modal-botoes">
+                  <button type="submit" class="btn-confirmar">Salvar Alterações</button>
+                  <button type="button" @click="fecharModalEditarDesconto" class="btn-cancelar">Cancelar</button>
+              </div>
+          </form>
+      </div>
+  </div>
+
+
 </template>
 
 <script setup>
@@ -188,6 +299,21 @@ const percentualDesconto = ref(0)
 const dataInicioDesconto = ref('')
 const dataFimDesconto = ref('')
 
+// Visualização de desconto
+const mostraModalVisualizarDesconto = ref(false)
+const produtoVisualizandoDesconto = ref(null)
+const descontoVisualizando = ref(null)
+
+
+
+// Edição de desconto
+const mostraModalEditarDesconto = ref(false)
+const descontoEditando = ref(null)
+const descricaoDescontoEditando = ref('')
+const percentualDescontoEditando = ref(0)
+const dataInicioDescontoEditando = ref('')
+const dataFimDescontoEditando = ref('')
+
 // Alternância de headers
 const modoDesconto = ref(false)
 
@@ -211,6 +337,36 @@ const imagemForm = ref(null)
 
 const categoriaSelecionada = ref('')
 const estoqueSelecionado = ref('')
+const filtroDescontoSelecionado = ref('Todos')
+
+// Função para verificar se um produto tem desconto ativo (usada no template)
+function temDescontoAtivoProduto(produto) {
+  if (!produto.discounts || produto.discounts.length === 0) {
+    return false
+  }
+  
+  const hoje = new Date()
+  
+  return produto.discounts.some(desconto => {
+    const inicio = new Date(desconto.start_date)
+    const fim = new Date(desconto.end_date)
+    return hoje >= inicio && hoje <= fim
+  })
+}
+
+// Função para verificar se um produto tem desconto expirado (usada no template)
+function temDescontoExpiradoProduto(produto) {
+  if (!produto.discounts || produto.discounts.length === 0) {
+    return false
+  }
+  
+  const hoje = new Date()
+  
+  return produto.discounts.some(desconto => {
+    const fim = new Date(desconto.end_date)
+    return hoje > fim
+  })
+}
 
 const produtosFiltrados = computed(() => {
   let produtosFiltrados = produtos.value
@@ -251,6 +407,72 @@ const produtosFiltrados = computed(() => {
     })
   }
 
+  // Filtro por desconto (apenas no modo desconto)
+  if (modoDesconto.value && filtroDescontoSelecionado.value) {
+    produtosFiltrados = produtosFiltrados.filter(produto => {
+      // Verificar se o produto tem descontos
+      if (!produto.discounts || produto.discounts.length === 0) {
+        // Se o filtro for "Sem desconto", mostra produtos sem descontos
+        if (filtroDescontoSelecionado.value === 'Sem desconto') {
+          return true
+        }
+        return false // Para outros filtros, só mostra produtos com descontos
+      }
+      
+      const hoje = new Date()
+      
+      // Verificar se há desconto ativo
+      const temAtivo = produto.discounts.some(desconto => {
+        const inicio = new Date(desconto.start_date)
+        const fim = new Date(desconto.end_date)
+        return hoje >= inicio && hoje <= fim
+      })
+      
+      // Verificar se há desconto expirado
+      const temExpirado = produto.discounts.some(desconto => {
+        const fim = new Date(desconto.end_date)
+        return hoje > fim
+      })
+      
+      switch (filtroDescontoSelecionado.value) {
+        case 'Todos':
+          return temAtivo || temExpirado // Mostra todos os produtos com descontos
+        case 'Ativo':
+          return temAtivo
+        case 'Expirado':
+          return temExpirado
+        case 'Sem desconto':
+          return !temAtivo && !temExpirado // Mostra produtos sem descontos
+        default:
+          return true
+      }
+    })
+    
+    // Ordenar: produtos com desconto ativo primeiro, depois expirados
+    produtosFiltrados.sort((a, b) => {
+      const hoje = new Date()
+      
+      const aTemAtivo = a.discounts.some(desconto => {
+        const inicio = new Date(desconto.start_date)
+        const fim = new Date(desconto.end_date)
+        return hoje >= inicio && hoje <= fim
+      })
+      
+      const bTemAtivo = b.discounts.some(desconto => {
+        const inicio = new Date(desconto.start_date)
+        const fim = new Date(desconto.end_date)
+        return hoje >= inicio && hoje <= fim
+      })
+      
+      // Se A tem ativo e B não, A vem primeiro
+      if (aTemAtivo && !bTemAtivo) return -1
+      // Se B tem ativo e A não, B vem primeiro
+      if (bTemAtivo && !aTemAtivo) return 1
+      // Se ambos têm o mesmo status, manter ordem original
+      return 0
+    })
+  }
+
   return produtosFiltrados
 })
 
@@ -274,25 +496,6 @@ function onBlurBusca() {
   // Pode adicionar lógica adicional se necessário
 }
 
-// Função para verificar se um produto tem desconto ativo
-function temDescontoAtivo(produto) {
-  if (!produto.discounts || produto.discounts.length === 0) {
-    return false
-  }
-  
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0) // Normalizar para comparar apenas a data
-  
-  return produto.discounts.some(desconto => {
-    const inicio = new Date(desconto.start_date)
-    const fim = new Date(desconto.end_date)
-    inicio.setHours(0, 0, 0, 0)
-    fim.setHours(23, 59, 59, 999) // Incluir o dia inteiro do fim
-    
-    return hoje >= inicio && hoje <= fim
-  })
-}
-
 // Funções de alternância de modo
 function alternarModo() {
   modoDesconto.value = !modoDesconto.value
@@ -303,16 +506,27 @@ function alternarModo() {
   termoBusca.value = ''
   categoriaSelecionada.value = ''
   estoqueSelecionado.value = ''
+  filtroDescontoSelecionado.value = 'Todos'
 }
 
 // Funções de desconto
 function abrirCriacaoDesconto() {
   selecionandoProduto.value = true
+  filtroDescontoSelecionado.value = 'Sem desconto'
+  toast.info('Selecione o produto')
 }
 
 function selecionarProduto(produto) {
   // Verificar se o produto já tem desconto ativo
-  if (temDescontoAtivo(produto)) {
+  const hoje = new Date()
+  
+  const temDescontoAtivo = produto.discounts && produto.discounts.some(desconto => {
+    const inicio = new Date(desconto.start_date)
+    const fim = new Date(desconto.end_date)
+    return hoje >= inicio && hoje <= fim
+  })
+  
+  if (temDescontoAtivo) {
     toast.error('Este produto já possui um desconto ativo!')
     return
   }
@@ -524,6 +738,154 @@ function fecharModalConfirmacao() {
   produtoParaExcluir.value = null
 }
 
+// Função para visualizar desconto
+function visualizarDesconto(produto) {
+  produtoVisualizandoDesconto.value = produto
+  
+  // Se tem apenas um desconto, mostrar diretamente
+  if (produto.discounts && produto.discounts.length === 1) {
+    descontoVisualizando.value = produto.discounts[0]
+    mostraModalVisualizarDesconto.value = true
+  } else if (produto.discounts && produto.discounts.length > 1) {
+    // Se tem múltiplos descontos, mostrar modal de escolha
+    produtoParaEditarDesconto.value = produto
+    mostraModalEscolherDesconto.value = true
+  }
+}
+
+// Função para escolher desconto para visualizar
+function escolherDescontoParaVisualizar(desconto) {
+  descontoVisualizando.value = desconto
+  mostraModalEscolherDesconto.value = false
+  produtoParaEditarDesconto.value = null
+  mostraModalVisualizarDesconto.value = true
+}
+
+// Função para fechar modal de visualização
+function fecharModalVisualizarDesconto() {
+  mostraModalVisualizarDesconto.value = false
+  produtoVisualizandoDesconto.value = null
+  descontoVisualizando.value = null
+}
+
+// Função para abrir modal de edição
+function abrirModalEditarDesconto() {
+  descontoEditando.value = descontoVisualizando.value
+  descricaoDescontoEditando.value = descontoVisualizando.value.description
+  percentualDescontoEditando.value = descontoVisualizando.value.discount_percentage
+  dataInicioDescontoEditando.value = descontoVisualizando.value.start_date.slice(0, 16)
+  dataFimDescontoEditando.value = descontoVisualizando.value.end_date.slice(0, 16)
+  mostraModalVisualizarDesconto.value = false
+  mostraModalEditarDesconto.value = true
+}
+
+// Função para salvar edição do desconto
+async function salvarEdicaoDesconto() {
+  try {
+    const descontoData = {
+      description: descricaoDescontoEditando.value,
+      discount_percentage: percentualDescontoEditando.value,
+      start_date: dataInicioDescontoEditando.value,
+      end_date: dataFimDescontoEditando.value
+    }
+    
+    await api.put(`/discounts/${descontoEditando.value.id}`, descontoData)
+    toast.success('Desconto atualizado com sucesso!')
+    fecharModalEditarDesconto()
+    
+    // Recarregar produtos para mostrar as mudanças
+    await carregarProdutos()
+  } catch (e) {
+    toast.error('Erro ao atualizar desconto.')
+    console.error('Erro:', e)
+  }
+}
+
+// Função para fechar modal de edição
+function fecharModalEditarDesconto() {
+  mostraModalEditarDesconto.value = false
+  descontoEditando.value = null
+  descricaoDescontoEditando.value = ''
+  percentualDescontoEditando.value = 0
+  dataInicioDescontoEditando.value = ''
+  dataFimDescontoEditando.value = ''
+}
+
+// Função para excluir desconto
+async function excluirDesconto() {
+  try {
+    await api.delete(`/discounts/${descontoVisualizando.value.id}`)
+    toast.success('Desconto excluído com sucesso!')
+    fecharModalVisualizarDesconto()
+    
+    // Recarregar produtos para mostrar as mudanças
+    await carregarProdutos()
+  } catch (e) {
+    toast.error('Erro ao excluir desconto.')
+    console.error('Erro:', e)
+  }
+}
+
+// Função para excluir desconto diretamente do produto
+async function excluirDescontoDireto(produto) {
+  try {
+    if (!produto.discounts || produto.discounts.length === 0) {
+      toast.error('Este produto não possui descontos.')
+      return
+    }
+    
+    // Se tem apenas um desconto, excluir diretamente
+    if (produto.discounts.length === 1) {
+      await api.delete(`/discounts/${produto.discounts[0].id}`)
+      toast.success('Desconto excluído com sucesso!')
+    } else {
+      // Se tem múltiplos descontos, mostrar modal de escolha
+      produtoParaEditarDesconto.value = produto
+      mostraModalEscolherDesconto.value = true
+    }
+    
+    // Recarregar produtos para mostrar as mudanças
+    await carregarProdutos()
+  } catch (e) {
+    toast.error('Erro ao excluir desconto.')
+    console.error('Erro:', e)
+  }
+}
+
+
+
+// Função para obter o texto do status do desconto
+function getStatusText(desconto) {
+  const hoje = new Date()
+  
+  const inicio = new Date(desconto.start_date)
+  const fim = new Date(desconto.end_date)
+  
+  if (hoje >= inicio && hoje <= fim) {
+    return 'ATIVO'
+  } else if (hoje > fim) {
+    return 'EXPIRADO'
+  } else {
+    return 'FUTURO'
+  }
+}
+
+// Função para obter a classe CSS do status do desconto
+function getStatusClass(desconto) {
+  const hoje = new Date()
+  
+  const inicio = new Date(desconto.start_date)
+  const fim = new Date(desconto.end_date)
+  
+  if (hoje >= inicio && hoje <= fim) {
+    return 'status-ativo'
+  } else if (hoje > fim) {
+    return 'status-expirado'
+  } else {
+    return 'status-futuro'
+  }
+}
+
 async function carregarProdutos() {
   carregandoProdutos.value = true
   erroProdutos.value = ''
@@ -572,7 +934,7 @@ async function carregarProdutos() {
     width: 100%;
     height: 100%;
     background-color: #ffffff;
-    padding: 50px 0px 0px 70px;
+    padding: 30px 0px 0px 70px;
 }
 
 @media (max-width: 768px) {
@@ -1002,6 +1364,36 @@ li {
   background-color: #b71c1c !important;
 }
 
+.detalhes-btn {
+  background-color: #06080afa !important;
+  color: white !important;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin-left: 10px;
+}
+
+.detalhes-btn:hover {
+  background-color: #050709fa !important;
+}
+
+.excluir-desconto-btn {
+  background-color: #dc3545 !important;
+  color: white !important;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin-left: 10px;
+}
+
+.excluir-desconto-btn:hover {
+  background-color: #b71c1c !important;
+}
+
 .BTli button {
   background-color: #6c757d;
   color: white;
@@ -1171,6 +1563,7 @@ li {
   padding-left: 10px;
   padding-right: 10px;
   transition: all 0.3s ease;
+  position: relative;
 }
 
 @media (max-width: 768px) {
@@ -1383,22 +1776,49 @@ li {
   opacity: 1;
 }
 
-.desconto-badge {
+.desconto-barra {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background-color: #6c757d;
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 0;
   font-size: 0.7rem;
   font-weight: bold;
+  text-align: center;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 160px;
+  border-radius: 8px 8px 0 0;
 }
 
-.desconto-badge span {
+@media (max-width: 768px) {
+  .desconto-barra {
+    width: 130px;
+  }
+}
+
+@media (max-width: 480px) {
+  .desconto-barra {
+    width: 110px;
+  }
+}
+
+.desconto-barra span {
   font-size: 0.6rem;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.desconto-barra.ativo {
+  background-color: #90EE90;
+  color: black;
+}
+
+.desconto-barra.expirado {
+  background-color: #dc3545;
+  color: white;
 }
 
 
@@ -1454,6 +1874,39 @@ li {
     color: #333;
 }
 
+/* Título principal */
+.titulo-principal {
+    margin: 0 0 20px 0;
+    color: #333;
+    font-size: 1.8rem;
+    font-weight: bold;
+    text-align: center;
+    padding: 20px 0;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+/* Filtro de desconto */
+.filtro-desconto {
+    display: flex;
+    align-items: center;
+    margin-right: 15px;
+}
+
+.filtro-desconto select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    font-size: 0.9rem;
+    min-width: 150px;
+}
+
+.filtro-desconto select:focus {
+    outline: none;
+    border-color: #2196F3;
+    box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
 .modal-desconto input {
     width: 100%;
     padding: 10px;
@@ -1497,5 +1950,117 @@ li {
         padding: 10px;
     }
 }
+
+/* Estilos para produtos com desconto no modo Descontos */
+.produto-com-desconto-modo {
+  border: 2px solid #90EE90 !important;
+  background-color: #f8f9fa !important;
+  opacity: 0.9;
+}
+
+.produto-com-desconto-modo:hover {
+  opacity: 1;
+}
+
+/* Estilos para produtos com desconto expirado no modo Descontos */
+.produto-com-desconto-expirado {
+  border: 2px solid #dc3545 !important;
+  background-color: #f8f9fa !important;
+  opacity: 0.9;
+}
+
+.produto-com-desconto-expirado:hover {
+  opacity: 1;
+}
+
+/* Estilos para visualização de desconto */
+.desconto-detalhes {
+    margin: 20px 0;
+}
+
+.desconto-info-completa {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    border-left: 4px solid #2196F3;
+}
+
+.desconto-info-completa h4 {
+    margin: 0 0 15px 0;
+    color: #1976D2;
+    font-size: 1.1rem;
+}
+
+.info-item {
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.info-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.info-item strong {
+    display: block;
+    color: #333;
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+}
+
+.info-item p {
+    margin: 0;
+    color: #666;
+    font-size: 1rem;
+}
+
+.status-ativo {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.status-expirado {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.status-futuro {
+    color: #ffc107;
+    font-weight: bold;
+}
+
+/* Estilos para botões do modal de detalhes */
+.btn-editar {
+    background-color: #2196F3 !important;
+    color: white !important;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    margin-right: 10px;
+}
+
+.btn-editar:hover {
+    background-color: #1976D2 !important;
+}
+
+.btn-excluir {
+    background-color: #dc3545 !important;
+    color: white !important;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    margin-right: 10px;
+}
+
+.btn-excluir:hover {
+    background-color: #b71c1c !important;
+}
+
+
 
 </style>
