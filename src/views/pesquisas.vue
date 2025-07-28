@@ -393,9 +393,7 @@ const categoriasSelecionadas = ref({}) // id boolean
 
 // Computed para saber se tem filtro ligado
 const algumFiltroAtivo = computed(() => {
-    // Categoria
     const algumaCategoria = Object.values(categoriasSelecionadas.value).some(v => v)
-    // Preço
     const algumPreco = !!precoSelecionado.value
     // (pode adicionar outros filtros aqui 👍)
     return algumaCategoria || algumPreco

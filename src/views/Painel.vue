@@ -17,7 +17,7 @@
         <router-link to="/ADMprodutos"> <button>Gerenciar produtos</button></router-link>
         <router-link to="/ADMpedidos"> <button>Gerenciar Pedidos</button></router-link>
         <router-link to="/ADMcupons"> <button>Gerenciar Cupons</button></router-link>
-        <router-link to="/ADMdescontos"> <button>Gerenciar Descontos</button></router-link>
+        
         </div>
     </div>
     <div class="menudireito" >

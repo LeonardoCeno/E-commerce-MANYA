@@ -318,7 +318,7 @@ watch(isLoggedIn, (novoValor) => {
 // isso aqui é pra que se o usuario estiver no painel a parte das categorias abaixo do header não aparecer (sim, é uma soluçao pra nao ter que separar ele do header pq fiz os 2 junto num outro componente 👍)
 const painelChildrenRoutes = [
     'Dados', 'Cupons', 'Pedidos', 'Favoritos', 'Enderecos', 'Carrinho',
-    'ADMcategorias', 'ADMprodutos', 'ADMpedidos', 'ADMcupons', 'ADMmoderadores', 'ADMdescontos'
+    'ADMcategorias', 'ADMprodutos', 'ADMpedidos', 'ADMcupons', 'ADMmoderadores'
 ]
 const esconderCategorias = computed(() => {
     return painelChildrenRoutes.includes(route.name)

@@ -14,7 +14,7 @@ import ADMpedidosView from '../views/ADMpedidos.vue'
 import ADMcuponsView from '../views/ADMcupons.vue'
 import PesquisasView from '../views/pesquisas.vue'
 import ADMmoderadoresView from '../views/ADMmoderadoes.vue'
-import ADMdescontosView from '../views/ADMdescontos.vue'
+
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -94,11 +94,7 @@ const router = createRouter({
           name: 'ADMmoderadores',
           component: ADMmoderadoresView,
         },
-        {
-          path: '/ADMdescontos',
-          name: 'ADMdescontos',
-          component: ADMdescontosView,
-        },
+
       ]
     }
   ],
@@ -107,7 +103,7 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const painelRoutes = [
     'Painel', 'Dados', 'Cupons', 'Pedidos', 'Favoritos', 'Enderecos', 'Carrinho',
-    'ADMcategorias', 'ADMprodutos', 'ADMpedidos', 'ADMcupons', 'ADMdescontos'
+    'ADMcategorias', 'ADMprodutos', 'ADMpedidos', 'ADMcupons'
   ]
   const token = localStorage.getItem('token')
   if (painelRoutes.includes(to.name) && !token) {
